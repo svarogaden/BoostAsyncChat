@@ -45,7 +45,7 @@ fail(beast::error_code ec, char const* what)
 
 
 class session;
-set<shared_ptr<session>>Connects;
+set <session*> Connects;
 unsigned int request = 0;
 
 
@@ -72,7 +72,10 @@ public:
 	~session()
 	{
 		//Deleted connect
-		Connects.erase(shared_from_this());
+		mtx.lock();
+		Connects.erase(&*this);
+		mtx.unlock();
+
 		cout << "Deleted connect" << endl;
 	}
 
@@ -97,9 +100,9 @@ public:
 			return fail(ec, "accept");
 
 		//Add connect
-
-		Connects.emplace(shared_from_this());
-
+		mtx.lock();
+		Connects.emplace(&*this);
+		mtx.unlock();
 
 
 		// Read a message
@@ -137,14 +140,18 @@ public:
 		if (ec == websocket::error::closed)
 		{
 			//Delete connect
-			Connects.erase(shared_from_this());
+			mtx.lock();
+			Connects.erase(&*this);
+			mtx.unlock();
 			return;
 		}
 
 		if (ec)
 		{
 			fail(ec, "read");
-			Connects.erase(shared_from_this());
+			mtx.lock();
+			Connects.erase(&*this);
+			mtx.unlock();
 		}
 
 		// Echo the message
@@ -179,7 +186,9 @@ public:
 
 		if (ec)
 		{
-			Connects.erase(shared_from_this());
+			mtx.lock();
+			Connects.erase(&*this);
+			mtx.unlock();
 			return fail(ec, "write");
 		}
 
