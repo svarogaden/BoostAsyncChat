@@ -46,7 +46,7 @@ fail(beast::error_code ec, char const* what)
 
 class session;
 set <session*> Connects;
-unsigned int request = 0;
+
 
 
 
@@ -158,8 +158,8 @@ public:
 		ws_.text(ws_.got_text());
 
 
-		request++;
-		std::cout << " buffer_size - " << boost::asio::buffer_size(buffer_.data()) << " thread id  - " << std::this_thread::get_id() << " request - " << request << std::endl;
+
+		std::cout << " buffer_size - " << boost::asio::buffer_size(buffer_.data()) << " thread id  - " << std::this_thread::get_id()<< std::endl;
 
 
 
