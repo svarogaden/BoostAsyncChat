@@ -58,7 +58,7 @@ class session : public std::enable_shared_from_this<session>
 	websocket::stream<tcp::socket> ws_;
 	net::strand<net::io_context::executor_type> strand_;
 	beast::multi_buffer buffer_;
-
+	vector<string> queue_;
 
 public:
 	// Take ownership of the socket
@@ -93,138 +93,159 @@ public:
 					std::placeholders::_1)));
 	}
 
-	void
-		on_accept(beast::error_code ec)
-	{
+
+
+
+void on_accept(beast::error_code ec)
+{
+		// Handle the error, if any
 		if (ec)
 			return fail(ec, "accept");
 
+		// Add this session to the list of active sessions
 		//Add connect
 		mtx.lock();
 		Connects.emplace(&*this);
 		mtx.unlock();
 
 
-		// Read a message
-		do_read();
-	}
 
-	void
-		do_read()
-	{
-		// Read a message into our buffer
+		// Read a message
 		ws_.async_read(
 			buffer_,
-			net::bind_executor(
-				strand_,
-				std::bind(
-					&session::on_read,
-					shared_from_this(),
-					std::placeholders::_1,
-					std::placeholders::_2)));
-
-
-
-
+			std::bind(
+				&session::on_read,
+				shared_from_this(),
+				std::placeholders::_1,
+				std::placeholders::_2));
 	}
 
 
-	void
-		on_read(
-			beast::error_code ec,
-			std::size_t bytes_transferred)
-	{
-		boost::ignore_unused(bytes_transferred);
 
-		// This indicates that the session was closed
-		if (ec == websocket::error::closed)
-		{
-			//Delete connect
-			mtx.lock();
-			Connects.erase(&*this);
-			mtx.unlock();
-			return;
-		}
+void  on_read(beast::error_code ec, std::size_t)
+{
+	 //Handle the error, if any
+	if (ec)
+		return fail(ec, "read");
 
-		if (ec)
-		{
-			fail(ec, "read");
-			mtx.lock();
-			Connects.erase(&*this);
-			mtx.unlock();
-		}
 
-		// Echo the message
-		ws_.text(ws_.got_text());
+	// Send to all connections
+	
+
+	string message = beast::buffers_to_string(buffer_.data());
+	std::cout << message  << " thread id  - " << std::this_thread::get_id() << std::endl;
 
 
 
-		std::cout << " buffer_size - " << boost::asio::buffer_size(buffer_.data()) << " thread id  - " << std::this_thread::get_id()<< std::endl;
-
-
-
-		//Send  messege all;
-
-
-		string message = beast::buffers_to_string(buffer_.data());
-		for (auto session : Connects)
-		{
-			session->Send(message);
-		}
-
-
-
-
+	mtx.lock();
+	for (auto session : Connects)
+	{		
+		session->Send(message);		
 	}
-
-	void
-		on_write(
-			beast::error_code ec,
-			std::size_t bytes_transferred)
-	{
-		boost::ignore_unused(bytes_transferred);
-
-		if (ec)
-		{
-			mtx.lock();
-			Connects.erase(&*this);
-			mtx.unlock();
-			return fail(ec, "write");
-		}
-
-		// Clear the buffer
-		buffer_.consume(buffer_.size());
-
-		// Do another read
-		do_read();
-	}
+	mtx.unlock();
 
 
-	void Send(std::string const & ss)
-	{
-		if (!strand_.running_in_this_thread())
-			return net::post(ws_.get_executor(), net::bind_executor(
-				strand_,
-				std::bind(
-					&session::Send,
-					shared_from_this(),
-					ss)));
+
+	 //Clear the buffer
+	buffer_.consume(buffer_.size());
+
+	 //Read another message
+	ws_.async_read(
+		buffer_,
+		std::bind(
+			&session::on_read,
+			shared_from_this(),
+			std::placeholders::_1,
+			std::placeholders::_2));
+}
 
 
+
+void Send(std::string const & ss)
+{
+	
+	if (!strand_.running_in_this_thread())
+		return net::post(ws_.get_executor(), net::bind_executor(
+			strand_,
+			std::bind(
+				&session::Send,
+				shared_from_this(),
+				ss)));
+
+	 //Always add to queue
+	queue_.push_back(ss);
+
+	// Are we already writing?
+	if (queue_.size() > 1)
+		return;
+
+	// We are not currently writing, so send this immediately
+	ws_.async_write(
+		net::buffer(queue_.front()),
+		std::bind(
+			&session::on_write,
+			shared_from_this(),
+			std::placeholders::_1,
+			std::placeholders::_2));
+
+
+
+
+
+}
+
+
+void on_write(beast::error_code ec, std::size_t)
+{
+	
+	// Handle the error, if any
+	if (ec)
+		return fail(ec, "write");
+
+	// Remove the string from the queue
+	queue_.erase(queue_.begin());
+
+	// Send the next message if any
+	if (!queue_.empty())
 		ws_.async_write(
-			buffer_.data(),
-			net::bind_executor(
-				strand_,
-				std::bind(
-					&session::on_write,
-					shared_from_this(),
-					std::placeholders::_1,
-					std::placeholders::_2)));
+			net::buffer(queue_.front()),
+			std::bind(
+				&session::on_write,
+				shared_from_this(),
+				std::placeholders::_1,
+				std::placeholders::_2));
+
+ 
+
+}
 
 
 
 
-	}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
