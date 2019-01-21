@@ -1,4 +1,3 @@
-﻿
 #include "pch.h"
 #include <boost/beast/core.hpp>
 #include <boost/beast/websocket.hpp>
@@ -131,7 +130,7 @@ void  on_read(beast::error_code ec, std::size_t)
 
 	// Send to all connections
 	
-
+	//string message = "Tester";
 	string message = beast::buffers_to_string(buffer_.data());
 	std::cout << message  << " thread id  - " << std::this_thread::get_id() << std::endl;
 
@@ -171,6 +170,8 @@ void Send(std::string const & ss)
 				&session::Send,
 				shared_from_this(),
 				ss)));
+
+
 
 	 //Always add to queue
 	queue_.push_back(ss);
@@ -324,13 +325,14 @@ int main(int argc, char* argv[])
 	auto const threads = std::max<int>(1, count_system_thread);
 
 
-	// The io_context is required for all I/O
+	///////
+	//// The io_context is required for all I/O
 	net::io_context ioc{ threads };
 
-	// Create and launch a listening port
+	//// Create and launch a listening port
 	std::make_shared<listener>(ioc, tcp::endpoint{ address, port })->run();
 
-	// Run the I/O service on the requested number of threads
+	//// Run the I/O service on the requested number of threads
 	std::vector<std::thread> v;
 	v.reserve(threads - 1);
 	for (auto i = threads - 1; i > 0; --i)
@@ -343,10 +345,6 @@ int main(int argc, char* argv[])
 	////////////////////////////////////////////////////////////////
 
 
-
-
-
-
-
+	
 	return EXIT_SUCCESS;
 }
