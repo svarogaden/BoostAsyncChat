@@ -57,7 +57,9 @@ class session : public std::enable_shared_from_this<session>
 	websocket::stream<tcp::socket> ws_;
 	net::strand<net::io_context::executor_type> strand_;
 	beast::multi_buffer buffer_;
-	vector<string> queue_;
+	//vector<string> queue_;
+	std::vector<std::shared_ptr<std::string const>> queue_;
+
 
 public:
 	// Take ownership of the socket
@@ -130,16 +132,17 @@ void  on_read(beast::error_code ec, std::size_t)
 
 	// Send to all connections
 	
-	//string message = "Tester";
 	string message = beast::buffers_to_string(buffer_.data());
-	std::cout << message  << " thread id  - " << std::this_thread::get_id() << std::endl;
+	auto const ss = std::make_shared<std::string const>(std::move(message));
+
+	std::cout << message << " thread id  - " << std::this_thread::get_id() << std::endl;
 
 
 
 	mtx.lock();
 	for (auto session : Connects)
 	{		
-		session->Send(message);		
+		session->Send(ss);		
 	}
 	mtx.unlock();
 
@@ -160,9 +163,12 @@ void  on_read(beast::error_code ec, std::size_t)
 
 
 
-void Send(std::string const & ss)
+
+
+
+
+void Send(std::shared_ptr<std::string const> const& ss)
 {
-	
 	if (!strand_.running_in_this_thread())
 		return net::post(ws_.get_executor(), net::bind_executor(
 			strand_,
@@ -171,9 +177,7 @@ void Send(std::string const & ss)
 				shared_from_this(),
 				ss)));
 
-
-
-	 //Always add to queue
+	// Always add to queue
 	queue_.push_back(ss);
 
 	// Are we already writing?
@@ -182,23 +186,20 @@ void Send(std::string const & ss)
 
 	// We are not currently writing, so send this immediately
 	ws_.async_write(
-		net::buffer(queue_.front()),
+		net::buffer(*queue_.front()),
 		std::bind(
 			&session::on_write,
 			shared_from_this(),
 			std::placeholders::_1,
 			std::placeholders::_2));
-
-
-
-
-
 }
+
+
+
 
 
 void on_write(beast::error_code ec, std::size_t)
 {
-	
 	// Handle the error, if any
 	if (ec)
 		return fail(ec, "write");
@@ -209,16 +210,15 @@ void on_write(beast::error_code ec, std::size_t)
 	// Send the next message if any
 	if (!queue_.empty())
 		ws_.async_write(
-			net::buffer(queue_.front()),
+			net::buffer(*queue_.front()),
 			std::bind(
 				&session::on_write,
 				shared_from_this(),
 				std::placeholders::_1,
 				std::placeholders::_2));
-
- 
-
 }
+
+
 
 
 };
